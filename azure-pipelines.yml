@@ -1,22 +1,48 @@
 trigger:
-- main
+- main  # Adjust this to your target branch
 
 pool:
   name: 'Default'  # Use your default agent pool
-
-variables:
-  tag: '$(Build.BuildId)'  # Unique tag for the image
 
 jobs:
 - job: Build
   displayName: 'Build Java Application'
   pool:
-    vmImage: 'ubuntu-latest'  # Correct reference to vmImage
+    name: 'default'  # Set to your self-hosted agent name
+
   steps:
+  # Step to checkout the code
+  - checkout: self
+
+  # Step to set the JAVA_HOME environment variable
+  - script: |
+      echo "##vso[task.setvariable variable=JAVA_HOME]/usr/lib/jvm/java-17-openjdk-amd64"
+      echo "JAVA_HOME is set to $(JAVA_HOME)"
+    displayName: 'Set JAVA_HOME'
+
+  # Step to run Maven build and tests
+  - task: Maven@4
+    inputs:
+      mavenPomFile: 'pom.xml'
+      publishJUnitResults: true  # Enable publishing JUnit test results
+      goals: 'clean install'  # This will run tests during the build
+      javaHomeOption: 'Path'
+      jdkDirectory: '$(JAVA_HOME)'  # Use the set JAVA_HOME path
+      mavenVersionOption: 'Path'
+      mavenDirectory: '/usr/share/maven'  # Path to your Maven installation
+
+  # Step to build Docker image
   - task: Docker@2
     displayName: 'Build Docker image'
     inputs:
       command: 'build'
       dockerfile: '$(Build.SourcesDirectory)/Dockerfile'  # Path to Dockerfile
       tags: |
-        $(tag)
+        $(Build.BuildId)
+
+  # Step to publish JUnit test results
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFormat: 'JUnit'  # Specify that we are publishing JUnit results
+      testResultsFiles: '**/target/surefire-reports/*.xml'  # Adjust if necessary based on your test report location
+      failIfNoTests: true  # Fail the build if no tests are found
